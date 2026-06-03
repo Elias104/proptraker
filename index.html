@@ -4,6 +4,7 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>PropTracker — Property & Income Manager</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏠</text></svg>">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{
@@ -475,14 +476,26 @@ async function loadFromDB(){
     sbFetch('/rest/v1/income?select=*'),
     sbFetch('/rest/v1/settings?select=*')
   ]);
-  S.units = units.map(r=>({...r.data, id:r.id}));
-  S.income = income.map(r=>({...r.data, id:r.id}));
+  // Only overwrite local data if cloud actually has records
+  // This prevents empty Supabase from wiping locally saved data
+  const dbUnits = units.map(r=>({...r.data, id:r.id}));
+  const dbIncome = income.map(r=>({...r.data, id:r.id}));
+  if(dbUnits.length > 0) S.units = dbUnits;
+  if(dbIncome.length > 0) S.income = dbIncome;
   // Load sources and pin from settings
   const srcRow = settings.find(r=>r.key==='sources');
   const pinRow = settings.find(r=>r.key==='pin');
   if(srcRow) S.sources = srcRow.value;
   if(pinRow) S.pin = pinRow.value;
   if(!S.sources.includes('Rental')) S.sources.unshift('Rental');
+  // If cloud is empty but local has data, push local up to cloud
+  if(dbUnits.length === 0 && S.units.length > 0){
+    console.log('Cloud empty but local has data — uploading to cloud...');
+    for(const u of S.units) await upsertUnit(u);
+  }
+  if(dbIncome.length === 0 && S.income.length > 0){
+    for(const inc of S.income) await upsertIncome(inc);
+  }
   saveLocal();
 }
 
