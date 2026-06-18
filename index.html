@@ -147,6 +147,10 @@ tr.r-so td{background:rgba(245,158,11,.025)}
 .spinner{width:36px;height:36px;border:3px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading-text{font-size:13px;color:var(--text3);font-family:var(--mono)}
+.receipt-thumb{width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);cursor:pointer;transition:transform .15s}
+.receipt-thumb:hover{transform:scale(1.1)}
+.receipt-viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:400;cursor:pointer}
+.receipt-viewer img{max-width:90vw;max-height:90vh;border-radius:var(--radius-lg);box-shadow:0 20px 60px rgba(0,0,0,.5)}
 @media print{.sidebar,.topbar-actions,.notif-panel,.filters,.act,.btn-xs,.btn,.alert-banner,.notif-overlay,#loadingOverlay{display:none!important}.shell{display:block}.main{overflow:visible}body{background:#fff;color:#000}#printHeader{display:block!important}}
 #printHeader{display:none;text-align:center;margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:12px}
 @media(max-width:768px){.shell{display:block}.sidebar{width:100%;height:auto;border-right:none;border-bottom:1px solid var(--border)}.stats-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.report-grid{grid-template-columns:1fr}.topbar,.section{padding:16px}.stats-grid{padding:14px 16px}}
@@ -170,6 +174,22 @@ tr.r-so td{background:rgba(245,158,11,.025)}
     <div class="lock-err" id="pinErr"></div>
     <button class="btn primary" style="width:100%;justify-content:center" onclick="checkPin()">Unlock</button>
     <div class="lock-hint">Default PIN: <strong>1234</strong> — change it in Settings</div>
+    <button onclick="openForgotPin()" style="background:none;border:none;color:var(--blue);font-size:12px;cursor:pointer;margin-top:10px;text-decoration:underline;font-family:var(--font)">Forgot PIN?</button>
+  </div>
+</div>
+
+<!-- FORGOT PIN MODAL -->
+<div class="modal-overlay" id="forgotPinModal" style="display:none">
+  <div class="modal" style="width:400px">
+    <div class="modal-hdr"><div class="modal-title">🔑 Reset PIN</div><button class="x-btn" onclick="closeModal('forgotPinModal')">✕</button></div>
+    <div class="modal-body">
+      <p style="color:var(--text2);font-size:13px;margin-bottom:16px">Enter your <strong>Supabase recovery code</strong> to reset your PIN. This is the anon key from your Supabase project settings.</p>
+      <div class="form-row"><label class="form-label">Recovery code (first 8 characters of your anon key)</label><input class="form-input" type="text" id="recoveryCode" placeholder="eyJhbGci…"/></div>
+      <div class="form-row"><label class="form-label">New PIN (4–6 digits)</label><input class="form-input" type="password" id="recoveryNewPin" maxlength="6" placeholder="New PIN"/></div>
+      <div class="form-row"><label class="form-label">Confirm new PIN</label><input class="form-input" type="password" id="recoveryConfirmPin" maxlength="6" placeholder="Repeat PIN"/></div>
+      <div style="color:var(--red);font-size:12px;min-height:18px" id="recoveryErr"></div>
+    </div>
+    <div class="modal-ftr"><button class="btn" onclick="closeModal('forgotPinModal')">Cancel</button><button class="btn primary" onclick="doRecovery()">Reset PIN</button></div>
   </div>
 </div>
 
@@ -264,7 +284,7 @@ tr.r-so td{background:rgba(245,158,11,.025)}
             <button class="btn" onclick="window.print()">🖨 Print</button>
           </div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Tenant</th><th>Rent (UGX)</th><th>Due date</th><th>Status</th><th>Note</th><th>Actions</th></tr></thead><tbody id="rentalsBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Tenant</th><th>Rent (UGX)</th><th>Due date</th><th>Status</th><th>Note</th><th>Receipt</th><th>Actions</th></tr></thead><tbody id="rentalsBody"></tbody></table></div>
       </div>
     </div>
 
@@ -288,7 +308,7 @@ tr.r-so td{background:rgba(245,158,11,.025)}
             <select id="fIStat" onchange="renderIncome()"><option value="">All</option><option value="received">Received</option><option value="pending">Pending</option></select>
           </div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Amount (UGX)</th><th>Status</th><th>Note</th><th>Actions</th></tr></thead><tbody id="incomeBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Amount (UGX)</th><th>Status</th><th>Note</th><th>Receipt</th><th>Actions</th></tr></thead><tbody id="incomeBody"></tbody></table></div>
       </div>
     </div>
 
@@ -360,6 +380,15 @@ tr.r-so td{background:rgba(245,158,11,.025)}
         <div class="form-row"><label class="form-label">Location (optional)</label><input class="form-input" type="text" id="mULocation" placeholder="Building / area"/></div>
       </div>
       <div class="form-row"><label class="form-label">Note</label><textarea id="mUNote" rows="2" placeholder="Any relevant detail…"></textarea></div>
+      <div class="form-row"><label class="form-label">Receipt image (optional)</label>
+        <input type="file" id="mUReceipt" accept="image/*" style="display:none" onchange="previewReceipt('mUReceiptPreview',this)"/>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="button" class="btn" onclick="document.getElementById('mUReceipt').click()">📎 Attach receipt</button>
+          <span style="font-size:11px;color:var(--text3)">JPG, PNG etc.</span>
+        </div>
+        <div id="mUReceiptPreview" style="margin-top:8px;display:flex;align-items:center;gap:8px"></div>
+        <button type="button" id="mUReceiptClear" class="btn-xs r" style="margin-top:6px;display:none" onclick="clearReceiptPreview('mUReceiptPreview');document.getElementById('mUReceipt').value='';this.style.display='none'">✕ Remove receipt</button>
+      </div>
     </div>
     <div class="modal-ftr"><button class="btn" onclick="closeModal('unitModal')">Cancel</button><button class="btn primary" onclick="saveUnit()">Save unit</button></div>
   </div>
@@ -380,6 +409,14 @@ tr.r-so td{background:rgba(245,158,11,.025)}
         <div style="color:var(--text2);margin-top:3px;font-size:12px" id="mPayNewDue">New due date: —</div>
       </div>
       <div class="form-row"><label class="form-label">Note (optional)</label><input class="form-input" type="text" id="mPayNote" placeholder="e.g. Mobile money, bank transfer…"/></div>
+      <div class="form-row"><label class="form-label">Payment receipt (optional)</label>
+        <input type="file" id="mPayReceipt" accept="image/*" style="display:none" onchange="previewReceipt('mPayReceiptPreview',this)"/>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="button" class="btn" onclick="document.getElementById('mPayReceipt').click()">📎 Attach receipt</button>
+          <span style="font-size:11px;color:var(--text3)">JPG, PNG etc.</span>
+        </div>
+        <div id="mPayReceiptPreview" style="margin-top:8px"></div>
+      </div>
       <div style="font-size:11px;color:var(--text3)">💡 Payment will also be logged in Other Income → Rental.</div>
     </div>
     <div class="modal-ftr"><button class="btn" onclick="closeModal('payModal')">Cancel</button><button class="btn primary" onclick="savePayment()">Confirm payment</button></div>
@@ -412,6 +449,14 @@ tr.r-so td{background:rgba(245,158,11,.025)}
       </div>
       <div class="form-row"><label class="form-label">Description</label><input class="form-input" type="text" id="mIncDesc" placeholder="Brief description…"/></div>
       <div class="form-row"><label class="form-label">Note</label><textarea id="mIncNote" rows="2"></textarea></div>
+      <div class="form-row"><label class="form-label">Receipt image (optional)</label>
+        <input type="file" id="mIncReceipt" accept="image/*" style="display:none" onchange="previewReceipt('mIncReceiptPreview',this)"/>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button type="button" class="btn" onclick="document.getElementById('mIncReceipt').click()">📎 Attach receipt</button>
+          <span style="font-size:11px;color:var(--text3)">JPG, PNG etc.</span>
+        </div>
+        <div id="mIncReceiptPreview" style="margin-top:8px"></div>
+      </div>
     </div>
     <div class="modal-ftr"><button class="btn" onclick="closeModal('incomeModal')">Cancel</button><button class="btn primary" onclick="saveIncome()">Save entry</button></div>
   </div>
@@ -588,6 +633,36 @@ async function init(){
   document.getElementById('loadingOverlay').style.display='none';
   document.getElementById('lockScreen').style.display='flex';
   document.getElementById('todayLabel').textContent=TODAY.toLocaleDateString('en-UG',{day:'numeric',month:'short',year:'numeric'});
+  // Show current PIN hint in console for recovery (only visible to user in DevTools)
+  console.info('%cPropTracker PIN loaded. If locked out, use Forgot PIN on the lock screen.','color:#3b82f6;font-size:13px');
+}
+
+// ═══════════════════════════════════════════════
+// FORGOT PIN / RECOVERY
+// ═══════════════════════════════════════════════
+function openForgotPin(){
+  document.getElementById('recoveryCode').value='';
+  document.getElementById('recoveryNewPin').value='';
+  document.getElementById('recoveryConfirmPin').value='';
+  document.getElementById('recoveryErr').textContent='';
+  document.getElementById('forgotPinModal').style.display='flex';
+}
+async function doRecovery(){
+  const code = document.getElementById('recoveryCode').value.trim();
+  const newPin = document.getElementById('recoveryNewPin').value.trim();
+  const confirm = document.getElementById('recoveryConfirmPin').value.trim();
+  const err = document.getElementById('recoveryErr');
+  // Verify recovery code matches first 8 chars of the anon key
+  const SB_KEY_START = SB_KEY.substring(0,8);
+  if(code !== SB_KEY_START){ err.textContent='Recovery code incorrect. Check your Supabase anon key.'; return; }
+  if(!/^\d{4,6}$/.test(newPin)){ err.textContent='PIN must be 4–6 digits.'; return; }
+  if(newPin !== confirm){ err.textContent='PINs do not match.'; return; }
+  S.pin = newPin; saveLocal();
+  try{ await syncPin(); }catch(e){}
+  closeModal('forgotPinModal');
+  document.getElementById('pinErr').style.color='var(--green)';
+  document.getElementById('pinErr').textContent='PIN reset! Log in with your new PIN.';
+  setTimeout(()=>{ document.getElementById('pinErr').textContent=''; document.getElementById('pinErr').style.color='var(--red)'; },4000);
 }
 
 // ═══════════════════════════════════════════════
@@ -728,6 +803,7 @@ function renderUnits(){
       <td class="mono">${r.dueDate}</td>
       <td>${badge(r._s,d>=0?d:null)}</td>
       <td><span class="note-cell" title="${esc(r.note||'')}">${esc(r.note)||'—'}</span></td>
+      <td>${r.receipt?receiptThumbHtml(r.receipt):'—'}</td>
       <td><div class="act">
         ${r._s!=='paid'?`<button class="btn-xs g" onclick="markPaid('${r.id}')">✓ Paid</button>`:''}
         ${r._s!=='paid'?`<button class="btn-xs b" onclick="openExtend('${r.id}')">Extend</button>`:''}
@@ -784,7 +860,8 @@ async function savePayment(){
   u.dueDate=d.toISOString().split('T')[0]; u.status='paid';
   const logNote=mo>1?`Advance: ${mo} months · UGX ${fmt(total)} · Paid ${payDate}${note?' · '+note:''}`:`Paid ${payDate}${note?' · '+note:''}`;
   u.note=(u.note?u.note+' | ':'')+logNote;
-  const incEntry={id:uid(),date:payDate,source:'Rental',description:`${u.unitName} — ${u.tenant}${mo>1?' ('+mo+' months)':''}`,amount:total,status:'received',note:logNote};
+  const payReceipt=getReceiptData('mPayReceiptPreview');
+  const incEntry={id:uid(),date:payDate,source:'Rental',description:`${u.unitName} — ${u.tenant}${mo>1?' ('+mo+' months)':''}`,amount:total,status:'received',note:logNote,receipt:payReceipt||undefined};
   S.income.push(incEntry);
   saveLocal();
   setSyncStatus('saving','⬤ Saving…');
@@ -792,6 +869,8 @@ async function savePayment(){
     await Promise.all([upsertUnit(u), upsertIncome(incEntry)]);
     setSyncStatus('ok','⬤ Cloud synced');
   }catch(e){ setSyncStatus('err','⬤ Sync error — will retry'); queueRetry('unit', u); queueRetry('income', incEntry); }
+  clearReceiptPreview('mPayReceiptPreview');
+  document.getElementById('mPayReceipt').value='';
   closeModal('payModal'); renderUnits(); toast(`✓ ${mo} month${mo>1?'s':''} payment recorded`);
 }
 
@@ -821,6 +900,8 @@ function openAddUnit(){
   ['mUName','mUTenant','mUPhone','mULocation','mUNote'].forEach(i=>document.getElementById(i).value='');
   document.getElementById('mUAmount').value=''; document.getElementById('mUDue').value=todayStr();
   document.getElementById('mUStatus').value='due-soon'; document.getElementById('mUType').value='Apartment';
+  clearReceiptPreview('mUReceiptPreview');
+  document.getElementById('mUReceipt').value='';
   document.getElementById('unitModal').style.display='flex';
 }
 function openEditUnit(id){
@@ -832,6 +913,15 @@ function openEditUnit(id){
   document.getElementById('mUAmount').value=u.amount; document.getElementById('mUDue').value=u.dueDate;
   document.getElementById('mUStatus').value=u.status||'due-soon'; document.getElementById('mULocation').value=u.location||'';
   document.getElementById('mUNote').value=u.note||'';
+  // Load existing receipt if any
+  const preview=document.getElementById('mUReceiptPreview');
+  document.getElementById('mUReceipt').value='';
+  if(u.receipt){
+    preview.innerHTML=`<img src="${u.receipt}" class="receipt-thumb" onclick="viewReceipt('${u.receipt}')" title="Click to enlarge"/> <span style="font-size:11px;color:var(--green);margin-left:8px">✓ Existing receipt</span>`;
+    preview._data=u.receipt;
+  } else {
+    clearReceiptPreview('mUReceiptPreview');
+  }
   document.getElementById('unitModal').style.display='flex';
 }
 async function saveUnit(){
@@ -841,11 +931,16 @@ async function saveUnit(){
   const due=document.getElementById('mUDue').value;
   if(!name||!tenant||!amount||!due){alert('Please fill in all required fields (*).');return}
   const id=document.getElementById('mUnitId').value;
-  const obj={id:id||uid(),unitName:name,unitType:document.getElementById('mUType').value,tenant,phone:document.getElementById('mUPhone').value.trim(),amount:Number(amount),dueDate:due,status:document.getElementById('mUStatus').value,location:document.getElementById('mULocation').value.trim(),note:document.getElementById('mUNote').value.trim()};
+  const newReceipt=getReceiptData('mUReceiptPreview');
+  // If editing and no new receipt uploaded, keep the existing one
+  const existingReceipt=id?(S.units.find(x=>x.id===id)||{}).receipt:undefined;
+  const receipt=newReceipt||existingReceipt||undefined;
+  const obj={id:id||uid(),unitName:name,unitType:document.getElementById('mUType').value,tenant,phone:document.getElementById('mUPhone').value.trim(),amount:Number(amount),dueDate:due,status:document.getElementById('mUStatus').value,location:document.getElementById('mULocation').value.trim(),note:document.getElementById('mUNote').value.trim(),receipt};
   if(id){const i=S.units.findIndex(x=>x.id===id);S.units[i]=obj}else{S.units.push(obj)}
   saveLocal(); setSyncStatus('saving','⬤ Saving…');
   try{ await upsertUnit(obj); setSyncStatus('ok','⬤ Cloud synced'); }
   catch(e){ setSyncStatus('err','⬤ Sync error — will retry'); queueRetry('unit', obj); }
+  clearReceiptPreview('mUReceiptPreview');
   closeModal('unitModal'); renderUnits(); toast(id?'✏️ Unit updated':'✅ Unit added');
 }
 
@@ -873,6 +968,7 @@ function renderIncome(){
     <td class="mono">${fmt(r.amount)}</td>
     <td>${badge(r.status)}</td>
     <td><span class="note-cell">${esc(r.note||'—')}</span></td>
+    <td>${r.receipt?receiptThumbHtml(r.receipt):'—'}</td>
     <td><div class="act"><button class="btn-xs" onclick="openEditIncome('${r.id}')">Edit</button><button class="btn-xs r" onclick="confirmDel('income','${r.id}')">✕</button></div></td>
   </tr>`).join(''):`<tr><td colspan="7"><div class="empty">No income entries yet.</div></td></tr>`;
   const mo=TODAY.getMonth(),yr=TODAY.getFullYear();
@@ -887,6 +983,8 @@ function openAddIncome(){
   document.getElementById('mIncId').value=''; document.getElementById('mIncDate').value=todayStr();
   document.getElementById('mIncAmt').value=''; document.getElementById('mIncDesc').value='';
   document.getElementById('mIncNote').value=''; document.getElementById('mIncStat').value='received';
+  clearReceiptPreview('mIncReceiptPreview');
+  document.getElementById('mIncReceipt').value='';
   fillIncSrcSelect(); document.getElementById('incomeModal').style.display='flex';
 }
 function openEditIncome(id){
@@ -896,17 +994,28 @@ function openEditIncome(id){
   document.getElementById('mIncAmt').value=e.amount; document.getElementById('mIncDesc').value=e.description||'';
   document.getElementById('mIncNote').value=e.note||''; document.getElementById('mIncStat').value=e.status;
   fillIncSrcSelect(); document.getElementById('mIncSrc').value=e.source;
+  document.getElementById('mIncReceipt').value='';
+  const preview=document.getElementById('mIncReceiptPreview');
+  if(e.receipt){
+    preview.innerHTML=`<img src="${e.receipt}" class="receipt-thumb" onclick="viewReceipt('${e.receipt}')" title="Click to enlarge"/> <span style="font-size:11px;color:var(--green);margin-left:8px">✓ Existing receipt</span>`;
+    preview._data=e.receipt;
+  } else { clearReceiptPreview('mIncReceiptPreview'); }
   document.getElementById('incomeModal').style.display='flex';
 }
 async function saveIncome(){
   const date=document.getElementById('mIncDate').value; const src=document.getElementById('mIncSrc').value; const amt=document.getElementById('mIncAmt').value;
   if(!date||!src||!amt){alert('Fill required fields.');return}
   const id=document.getElementById('mIncId').value;
-  const obj={id:id||uid(),date,source:src,description:document.getElementById('mIncDesc').value.trim(),amount:Number(amt),status:document.getElementById('mIncStat').value,note:document.getElementById('mIncNote').value.trim()};
+  const newIncReceipt=getReceiptData('mIncReceiptPreview');
+  const existingIncReceipt=id?(S.income.find(x=>x.id===id)||{}).receipt:undefined;
+  const incReceipt=newIncReceipt||existingIncReceipt||undefined;
+  const obj={id:id||uid(),date,source:src,description:document.getElementById('mIncDesc').value.trim(),amount:Number(amt),status:document.getElementById('mIncStat').value,note:document.getElementById('mIncNote').value.trim(),receipt:incReceipt};
   if(id){const i=S.income.findIndex(x=>x.id===id);S.income[i]=obj}else{S.income.push(obj)}
   saveLocal(); setSyncStatus('saving','⬤ Saving…');
   try{ await upsertIncome(obj); setSyncStatus('ok','⬤ Cloud synced'); }
   catch(e){ setSyncStatus('err','⬤ Sync error — will retry'); queueRetry('income', obj); }
+  clearReceiptPreview('mIncReceiptPreview');
+  document.getElementById('mIncReceipt').value='';
   closeModal('incomeModal'); renderIncome(); refillSourceDrops(); toast(id?'✏️ Updated':'✅ Entry added');
 }
 
@@ -1139,6 +1248,47 @@ function importFromExcel(e){
     e.target.value='';
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ═══════════════════════════════════════════════
+// RECEIPTS
+// ═══════════════════════════════════════════════
+function previewReceipt(previewId, input){
+  const file = input.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById(previewId);
+    preview.innerHTML = `<img src="${e.target.result}" class="receipt-thumb" onclick="viewReceipt('${e.target.result}')" title="Click to enlarge"/>
+      <span style="font-size:11px;color:var(--green);margin-left:8px">✓ ${file.name}</span>`;
+    preview._data = e.target.result; // store base64
+    // Show remove button if exists
+    const clearBtn=document.getElementById(previewId.replace('Preview','Clear'));
+    if(clearBtn) clearBtn.style.display='inline-flex';
+  };
+  reader.readAsDataURL(file);
+}
+
+function getReceiptData(previewId){
+  const el = document.getElementById(previewId);
+  return el && el._data ? el._data : null;
+}
+
+function clearReceiptPreview(previewId){
+  const el = document.getElementById(previewId);
+  if(el){ el.innerHTML=''; el._data=null; }
+}
+
+function viewReceipt(src){
+  const viewer = document.createElement('div');
+  viewer.className='receipt-viewer';
+  viewer.innerHTML=`<img src="${src}"/>`;
+  viewer.onclick=()=>document.body.removeChild(viewer);
+  document.body.appendChild(viewer);
+}
+
+function receiptThumbHtml(src){
+  if(!src) return '';
+  return `<img src="${src}" class="receipt-thumb" onclick="viewReceipt('${src}')" title="Click to view receipt"/>`;
 }
 
 // ═══════════════════════════════════════════════
