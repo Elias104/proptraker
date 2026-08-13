@@ -332,13 +332,15 @@ tr.r-so td{background:rgba(245,158,11,.025)}
             <input type="text" id="fRSearch" placeholder="Search tenant / unit…" oninput="renderUnits()" style="width:160px"/>
             <button class="btn" onclick="printView('rentals')">🖨 Print</button>
             <button class="btn primary" onclick="downloadPdf('rentals')">📄 Download PDF</button>
+          </div>
+        </div>
         <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Tenant</th><th>Rent (UGX)</th><th>Due date</th><th>Status</th><th class="col-note">Note</th><th>Receipt</th><th class="col-actions">Actions</th></tr></thead><tbody id="rentalsBody"></tbody></table></div>
       </div>
       <div class="section" style="padding-top:0">
         <div class="section-head">
           <div class="section-title">Rent activity — <span class="month-switch-label" style="min-width:0">—</span></div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit</th><th>Tenant</th><th>Amount (UGX)</th><th>Method</th><th class="col-note">Note</th></tr></thead><tbody id="rentActivityBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit</th><th>Tenant</th><th>Amount (UGX)</th><th>Method</th><th class="col-note">Note</th><th>Receipt</th></tr></thead><tbody id="rentActivityBody"></tbody></table></div>
       </div>
     </div>
 
@@ -449,6 +451,7 @@ tr.r-so td{background:rgba(245,158,11,.025)}
         <div class="form-row"><label class="form-label">Tenant name *</label><input class="form-input" type="text" id="mUTenant" placeholder="Full name"/></div>
         <div class="form-row"><label class="form-label">Phone (optional)</label><input class="form-input" type="text" id="mUPhone" placeholder="+256…"/></div>
         <div class="form-row"><label class="form-label">Rent amount (UGX) *</label><input class="form-input" type="number" id="mUAmount" placeholder="0" min="0"/></div>
+        <div class="form-row"><label class="form-label">Move-in date</label><input class="form-input" type="date" id="mUMoveIn"/><div style="font-size:11px;color:var(--text3);margin-top:4px">Used for the tenant's account history. Defaults to next due date if left blank.</div></div>
         <div class="form-row"><label class="form-label">Next due date *</label><input class="form-input" type="date" id="mUDue"/></div>
         <div class="form-row"><label class="form-label">Status</label><select class="form-input" id="mUStatus"><option value="due-soon">Due soon</option><option value="paid">Paid</option><option value="overdue">Overdue</option><option value="extended">Extended</option></select></div>
         <div class="form-row"><label class="form-label">Location (optional)</label><input class="form-input" type="text" id="mULocation" placeholder="Building / area"/></div>
@@ -546,6 +549,14 @@ tr.r-so td{background:rgba(245,158,11,.025)}
       <div class="form-row"><label class="form-label">Description (optional)</label><textarea id="mSrcDesc" rows="2"></textarea></div>
     </div>
     <div class="modal-ftr"><button class="btn" onclick="closeModal('sourceModal')">Cancel</button><button class="btn primary" onclick="saveSource()">Add source</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="tenantModal" style="display:none">
+  <div class="modal" style="width:640px">
+    <div class="modal-hdr"><div class="modal-title" id="tenantModalTitle">Tenant account</div><button class="x-btn" onclick="closeModal('tenantModal')">✕</button></div>
+    <div class="modal-body" id="tenantModalBody" style="padding-top:14px"></div>
+    <div class="modal-ftr"><button class="btn" onclick="closeModal('tenantModal')">Close</button></div>
   </div>
 </div>
 
@@ -828,6 +839,73 @@ function badge(status,days){
 }
 
 // ═══════════════════════════════════════════════
+// MONTH HISTORY — reconstructs what was true for a unit
+// as of any browsed month, by replaying its payment &
+// extension history from a starting move-in date.
+// ═══════════════════════════════════════════════
+function ymOf(dateStr){ return (dateStr||'').slice(0,7); }
+function endOfMonthStr(ym){ const[y,m]=ym.split('-').map(Number); const d=new Date(y,m,0); return d.toISOString().split('T')[0]; }
+function addMonthsStr(dateStr,mo){ const d=new Date(dateStr); d.setMonth(d.getMonth()+mo); return d.toISOString().split('T')[0]; }
+// Payment + extension history for a unit, oldest first
+function unitEventsSorted(u){
+  const pays=S.income.filter(e=>e.source==='Rental'&&(e.unitId===u.id))
+    .map(e=>({type:'payment',date:e.date,amount:Number(e.amount)}));
+  const exts=(u.extensions||[]).map(x=>({type:'extension',date:x.date,newDueDate:x.newDueDate}));
+  return pays.concat(exts).sort((a,b)=>a.date.localeCompare(b.date));
+}
+// Best-known move-in date: explicit field, or reverse-derived from payment
+// history so replay lines up with the unit's current due date, or the due
+// date itself as a last resort (no history to go on).
+function getMoveInDate(u){
+  if(u.moveInDate) return u.moveInDate;
+  const pays=S.income.filter(e=>e.source==='Rental'&&e.unitId===u.id);
+  const totalMonths=pays.reduce((s,e)=>s+Math.max(1,Math.round(Number(e.amount)/Number(u.amount||1))),0);
+  if(totalMonths>0&&u.dueDate) return addMonthsStr(u.dueDate,-totalMonths);
+  return u.dueDate;
+}
+// Replays a unit's events up to refDate and returns its due date + status
+// as they stood at that point in time.
+function replayUnitState(u,refDate){
+  let due=getMoveInDate(u)||u.dueDate;
+  let lastType=u.status||'due-soon';
+  const refStr=refDate.toISOString().split('T')[0];
+  unitEventsSorted(u).filter(e=>e.date<=refStr).forEach(e=>{
+    if(e.type==='payment'){
+      const mo=Math.max(1,Math.round(e.amount/Number(u.amount||1)));
+      due=addMonthsStr(due,mo);
+      lastType='paid';
+    } else if(e.type==='extension'){
+      due=e.newDueDate;
+      lastType='extended';
+    }
+  });
+  const days=Math.round((new Date(due)-refDate)/864e5);
+  let status;
+  if(days<0) status='overdue';
+  else if(days<=3) status='due-soon';
+  else status=(lastType==='paid')?'paid':(lastType==='extended')?'extended':'due-soon';
+  return {dueDate:due,status,days};
+}
+// Stats for the Rentals dashboard cards, scoped to a given month (ym = 'YYYY-MM').
+// Uses live/today state for the current or a future month, and replays history
+// for a past month so the cards show what was actually true back then.
+function computeMonthStats(ym){
+  const currentYm=TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+  const isPast=ym<currentYm;
+  const refDate=isPast?new Date(endOfMonthStr(ym)):TODAY;
+  const eomStr=endOfMonthStr(ym);
+  const existed=S.units.filter(u=>{ const mi=getMoveInDate(u); return !mi||mi<=eomStr; });
+  let overdue=0,dueSoon=0;
+  existed.forEach(u=>{
+    const st=replayUnitState(u,refDate).status;
+    if(st==='overdue') overdue++; else if(st==='due-soon') dueSoon++;
+  });
+  const monthRentPays=S.income.filter(e=>e.source==='Rental'&&e.status==='received'&&e.date&&e.date.startsWith(ym));
+  const paidUnitKeys=new Set(monthRentPays.map(e=>e.unitId||e.unitName+'|'+e.tenant));
+  return {total:existed.length,overdue,dueSoon,paid:paidUnitKeys.size,isPast,monthRentPays};
+}
+
+// ═══════════════════════════════════════════════
 // VIEWS
 // ═══════════════════════════════════════════════
 function showView(v){
@@ -906,8 +984,8 @@ function renderUnits(){
   tbody.innerHTML=rows.length?rows.map(r=>{
     const d=daysFrom(r.dueDate);
     return `<tr class="${r._s==='overdue'?'r-ov':r._s==='due-soon'?'r-so':''}">
-      <td><div class="u-name">${esc(r.unitName)}</div><div class="u-sub">${r.unitType||''}${r.location?' · '+esc(r.location):''}</div></td>
-      <td>${esc(r.tenant)}${r.phone?`<div class="u-sub">${esc(r.phone)}</div>`:''}</td>
+      <td style="cursor:pointer" onclick="openTenantAccount('${r.id}')" title="View tenant account"><div class="u-name">${esc(r.unitName)}</div><div class="u-sub">${r.unitType||''}${r.location?' · '+esc(r.location):''}</div></td>
+      <td style="cursor:pointer" onclick="openTenantAccount('${r.id}')" title="View tenant account"><div class="u-name">${esc(r.tenant)}</div>${r.phone?`<div class="u-sub">${esc(r.phone)}</div>`:''}</td>
       <td class="mono">${fmt(r.amount)}</td>
       <td class="mono">${r.dueDate}</td>
       <td>${badge(r._s,d>=0?d:null)}</td>
@@ -922,16 +1000,19 @@ function renderUnits(){
     </tr>`;
   }).join(''):`<tr><td colspan="7"><div class="empty">No units yet. Click "+ Add unit" to get started.</div></td></tr>`;
   const all=S.units.map(u=>({...u,_s:calcStatus(u)}));
-  document.getElementById('s-total').textContent=S.units.length;
-  document.getElementById('s-ov').textContent=all.filter(u=>u._s==='overdue').length;
-  document.getElementById('s-soon').textContent=all.filter(u=>u._s==='due-soon').length;
-  // "Paid" card is scoped to the selected month via the rent-activity log, not live unit status
-  const monthRentPays=S.income.filter(e=>e.source==='Rental'&&e.status==='received'&&e.date&&e.date.startsWith(selMonth));
-  const paidUnitKeys=new Set(monthRentPays.map(e=>e.unitId||e.unitName+'|'+e.tenant));
-  document.getElementById('s-paid').textContent=paidUnitKeys.size;
+  // Stat cards reflect the browsed month (historical replay for past months,
+  // live state for the current/future month) so "Total units", "Overdue" and
+  // "Paid" all describe what was actually true in that month.
+  const ms=computeMonthStats(selMonth);
+  document.getElementById('s-total').textContent=ms.total;
+  document.getElementById('s-ov').textContent=ms.overdue;
+  document.getElementById('s-soon').textContent=ms.dueSoon;
+  document.getElementById('s-paid').textContent=ms.paid;
   document.getElementById('s-paidLabel').textContent=isCurrentMonth()?'Paid this month':'Paid in month shown';
   document.getElementById('s-monthName').textContent=monthLabel(selMonth);
-  document.getElementById('unitCountSub').textContent=S.units.length+' units registered';
+  document.getElementById('unitCountSub').textContent=(ms.isPast?ms.total+' units existed':S.units.length+' units registered')+(isCurrentMonth()?'':' — viewing '+monthLabel(selMonth));
+  // Alert banner + sidebar badge always reflect LIVE state (they're action
+  // prompts for right now, not part of the historical report).
   const ov=all.filter(u=>u._s==='overdue').length;
   const bd=document.getElementById('overdueCount'); bd.textContent=ov; bd.style.display=ov?'':'none';
   updateBellDot();
@@ -941,7 +1022,7 @@ function renderUnits(){
   else if(soon>0){ab.style.display='flex';ab.className='alert-banner amber';ab.innerHTML=`<span>⚠️</span><strong>${soon} unit${soon>1?'s are':' is'} due within 3 days.</strong>&nbsp;Collect soon.`}
   else ab.style.display='none';
   updateMonthLabels();
-  renderRentActivity(monthRentPays);
+  renderRentActivity(ms.monthRentPays);
 }
 function renderRentActivity(monthRentPays){
   const rows=(monthRentPays||S.income.filter(e=>e.source==='Rental'&&e.date&&e.date.startsWith(selMonth))).slice().sort((a,b)=>b.date.localeCompare(a.date));
@@ -954,7 +1035,69 @@ function renderRentActivity(monthRentPays){
     <td class="mono">${fmt(r.amount)}</td>
     <td>${r.method?esc(r.method):'—'}</td>
     <td><span class="note-cell">${esc(r.note||'—')}</span></td>
-  </tr>`).join(''):`<tr><td colspan="6"><div class="empty">No rent payments recorded for ${monthLabel(selMonth)}.</div></td></tr>`;
+    <td>${r.receipt?receiptThumbHtml(r.receipt):'—'}</td>
+  </tr>`).join(''):`<tr><td colspan="7"><div class="empty">No rent payments recorded for ${monthLabel(selMonth)}.</div></td></tr>`;
+}
+
+// ═══════════════════════════════════════════════
+// TENANT ACCOUNT
+// ═══════════════════════════════════════════════
+function openTenantAccount(id){
+  const u=S.units.find(x=>x.id===id);if(!u)return;
+  const moveIn=getMoveInDate(u);
+  const live=calcStatus(u);
+  const liveDays=daysFrom(u.dueDate);
+  document.getElementById('tenantModalTitle').textContent=`${u.tenant} — ${u.unitName}`;
+
+  // Build a running "paid through" timeline by replaying events chronologically
+  const events=unitEventsSorted(u);
+  let runningDue=moveIn||u.dueDate;
+  const rows=events.map(e=>{
+    if(e.type==='payment'){
+      const mo=Math.max(1,Math.round(e.amount/Number(u.amount||1)));
+      const before=runningDue;
+      runningDue=addMonthsStr(runningDue,mo);
+      const incEntry=S.income.find(x=>x.date===e.date&&x.unitId===u.id&&Number(x.amount)===e.amount);
+      return {date:e.date,kind:'Payment',detail:`${mo} month${mo>1?'s':''} · covers ${before} → ${runningDue}`,amount:e.amount,method:incEntry?.method||'—',receipt:incEntry?.receipt||null,note:incEntry?.note||''};
+    } else {
+      const before=runningDue;
+      runningDue=e.newDueDate;
+      return {date:e.date,kind:'Extension',detail:`${before} → ${runningDue}`,amount:null,method:'—',receipt:null,note:e.reason||''};
+    }
+  });
+  const totalPaid=events.filter(e=>e.type==='payment').reduce((s,e)=>s+e.amount,0);
+
+  const rowsHtml=rows.length?rows.slice().reverse().map(r=>`<tr>
+      <td class="mono">${r.date}</td>
+      <td><span class="badge ${r.kind==='Payment'?'paid':'extended'}">${r.kind}</span></td>
+      <td style="font-size:12px;color:var(--text2)">${esc(r.detail)}</td>
+      <td class="mono">${r.amount!=null?fmt(r.amount):'—'}</td>
+      <td>${esc(r.method)}</td>
+      <td>${r.receipt?receiptThumbHtml(r.receipt):'—'}</td>
+    </tr>`).join(''):`<tr><td colspan="6"><div class="empty">No payments or extensions recorded yet.</div></td></tr>`;
+
+  document.getElementById('tenantModalBody').innerHTML=`
+    <div class="report-grid" style="margin-bottom:16px">
+      <div class="report-card">
+        <div class="report-card-title">Tenant details</div>
+        <div class="report-row"><span class="lbl">Unit</span><span class="val">${esc(u.unitName)}${u.unitType?' ('+esc(u.unitType)+')':''}</span></div>
+        <div class="report-row"><span class="lbl">Phone</span><span class="val">${esc(u.phone||'—')}</span></div>
+        <div class="report-row"><span class="lbl">Move-in date</span><span class="val">${moveIn||'—'}</span></div>
+        <div class="report-row"><span class="lbl">Rent / month</span><span class="val">UGX ${fmt(u.amount)}</span></div>
+      </div>
+      <div class="report-card">
+        <div class="report-card-title">Current standing</div>
+        <div class="report-row"><span class="lbl">Status</span><span class="val">${badge(live,liveDays>=0?liveDays:null)}</span></div>
+        <div class="report-row"><span class="lbl">Next due date</span><span class="val">${u.dueDate}</span></div>
+        <div class="report-row"><span class="lbl">Total paid to date</span><span class="val c-green">UGX ${fmt(totalPaid)}</span></div>
+        <div class="report-row"><span class="lbl">Payments on record</span><span class="val">${events.filter(e=>e.type==='payment').length}</span></div>
+      </div>
+    </div>
+    <div class="section-head" style="padding-top:0"><div class="section-title">Payment & extension history</div></div>
+    <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Detail</th><th>Amount (UGX)</th><th>Method</th><th>Receipt</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
+    ${u.note?`<div style="margin-top:14px;font-size:12px;color:var(--text3)"><strong style="color:var(--text2)">Note:</strong> ${esc(u.note)}</div>`:''}
+  `;
+  document.getElementById('tenantModal').style.display='flex';
 }
 
 function markPaid(id){
@@ -1017,6 +1160,8 @@ async function saveExtension(){
   const u=S.units.find(x=>x.id===id);if(!u)return;
   u.dueDate=nd; u.status='extended';
   u.note=(u.note?u.note+' | ':'')+`Extended to ${nd}: ${reason}`;
+  if(!u.extensions) u.extensions=[];
+  u.extensions.push({date:todayStr(),newDueDate:nd,reason});
   saveLocal(); setSyncStatus('saving','⬤ Saving…');
   try{ await upsertUnit(u); setSyncStatus('ok','⬤ Cloud synced'); }
   catch(e){ setSyncStatus('err','⬤ Sync error — will retry'); queueRetry('unit', u); }
@@ -1028,6 +1173,7 @@ function openAddUnit(){
   document.getElementById('mUnitId').value='';
   ['mUName','mUTenant','mUPhone','mULocation','mUNote'].forEach(i=>document.getElementById(i).value='');
   document.getElementById('mUAmount').value=''; document.getElementById('mUDue').value=todayStr();
+  document.getElementById('mUMoveIn').value=todayStr();
   document.getElementById('mUStatus').value='due-soon'; document.getElementById('mUType').value='Apartment';
   clearReceiptPreview('mUReceiptPreview');
   document.getElementById('mUReceipt').value='';
@@ -1040,6 +1186,7 @@ function openEditUnit(id){
   document.getElementById('mUName').value=u.unitName; document.getElementById('mUType').value=u.unitType||'Apartment';
   document.getElementById('mUTenant').value=u.tenant; document.getElementById('mUPhone').value=u.phone||'';
   document.getElementById('mUAmount').value=u.amount; document.getElementById('mUDue').value=u.dueDate;
+  document.getElementById('mUMoveIn').value=u.moveInDate||getMoveInDate(u)||u.dueDate;
   document.getElementById('mUStatus').value=u.status||'due-soon'; document.getElementById('mULocation').value=u.location||'';
   document.getElementById('mUNote').value=u.note||'';
   // Load existing receipt if any
@@ -1064,7 +1211,9 @@ async function saveUnit(){
   // If editing and no new receipt uploaded, keep the existing one
   const existingReceipt=id?(S.units.find(x=>x.id===id)||{}).receipt:undefined;
   const receipt=newReceipt||existingReceipt||undefined;
-  const obj={id:id||uid(),unitName:name,unitType:document.getElementById('mUType').value,tenant,phone:document.getElementById('mUPhone').value.trim(),amount:Number(amount),dueDate:due,status:document.getElementById('mUStatus').value,location:document.getElementById('mULocation').value.trim(),note:document.getElementById('mUNote').value.trim(),receipt};
+  const moveIn=document.getElementById('mUMoveIn').value||due;
+  const existingExtensions=id?(S.units.find(x=>x.id===id)||{}).extensions:undefined;
+  const obj={id:id||uid(),unitName:name,unitType:document.getElementById('mUType').value,tenant,phone:document.getElementById('mUPhone').value.trim(),amount:Number(amount),dueDate:due,moveInDate:moveIn,status:document.getElementById('mUStatus').value,location:document.getElementById('mULocation').value.trim(),note:document.getElementById('mUNote').value.trim(),receipt,extensions:existingExtensions||[]};
   if(id){const i=S.units.findIndex(x=>x.id===id);S.units[i]=obj}else{S.units.push(obj)}
   saveLocal(); setSyncStatus('saving','⬤ Saving…');
   try{ await upsertUnit(obj); setSyncStatus('ok','⬤ Cloud synced'); }
