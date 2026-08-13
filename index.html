@@ -1046,6 +1046,17 @@ function renderRentActivity(monthRentPays){
 // ═══════════════════════════════════════════════
 // TENANT ACCOUNT
 // ═══════════════════════════════════════════════
+let returnToTenant=null; // unit id to reopen the tenant account modal for, after Record payment / Extend closes
+function recordPaymentForTenant(id){
+  returnToTenant=id;
+  closeModal('tenantModal');
+  markPaid(id);
+}
+function extendForTenant(id){
+  returnToTenant=id;
+  closeModal('tenantModal');
+  openExtend(id);
+}
 function openTenantAccount(id){
   const u=S.units.find(x=>x.id===id);if(!u)return;
   const moveIn=getMoveInDate(u);
@@ -1081,6 +1092,10 @@ function openTenantAccount(id){
     </tr>`).join(''):`<tr><td colspan="6"><div class="empty">No payments or extensions recorded yet.</div></td></tr>`;
 
   document.getElementById('tenantModalBody').innerHTML=`
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn primary" onclick="recordPaymentForTenant('${u.id}')">＋ Record payment</button>
+      <button class="btn" onclick="extendForTenant('${u.id}')">📅 Extend due date</button>
+    </div>
     <div class="report-grid" style="margin-bottom:16px">
       <div class="report-card">
         <div class="report-card-title">Tenant details</div>
@@ -1407,7 +1422,15 @@ function confirmClearAll(){
 // ═══════════════════════════════════════════════
 // MODALS / EXPORT / IMPORT
 // ═══════════════════════════════════════════════
-function closeModal(id){document.getElementById(id).style.display='none'}
+function closeModal(id){
+  document.getElementById(id).style.display='none';
+  // If Record payment / Extend were launched from the tenant account modal,
+  // reopen it afterward (on save OR cancel) so the user lands back where they were.
+  if((id==='payModal'||id==='extendModal')&&returnToTenant){
+    const rt=returnToTenant; returnToTenant=null;
+    openTenantAccount(rt);
+  }
+}
 document.querySelectorAll('.modal-overlay').forEach(m=>{m.addEventListener('click',e=>{if(e.target===m)m.style.display='none'})});
 function exportData(){
   const blob=new Blob([JSON.stringify(S,null,2)],{type:'application/json'});
