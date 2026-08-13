@@ -845,7 +845,19 @@ function badge(status,days){
 // ═══════════════════════════════════════════════
 function ymOf(dateStr){ return (dateStr||'').slice(0,7); }
 function endOfMonthStr(ym){ const[y,m]=ym.split('-').map(Number); const d=new Date(y,m,0); return d.toISOString().split('T')[0]; }
-function addMonthsStr(dateStr,mo){ const d=new Date(dateStr); d.setMonth(d.getMonth()+mo); return d.toISOString().split('T')[0]; }
+// Adds `mo` calendar months to a 'YYYY-MM-DD' string safely. Plain JS
+// setMonth() overflows into the following month when the target month is
+// shorter than the source day (e.g. Jan 31 + 1 month rolls to Mar 3,
+// silently skipping February) — this clamps to the target month's last day instead.
+function addMonthsStr(dateStr,mo){
+  const[y,m,day]=dateStr.split('-').map(Number);
+  const total=(m-1)+mo;
+  const ty=y+Math.floor(total/12);
+  const tm=((total%12)+12)%12;
+  const lastDay=new Date(ty,tm+1,0).getDate();
+  const d=Math.min(day,lastDay);
+  return `${ty}-${String(tm+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
 // Payment + extension history for a unit, oldest first
 function unitEventsSorted(u){
   const pays=S.income.filter(e=>e.source==='Rental'&&(e.unitId===u.id))
@@ -1135,8 +1147,8 @@ function updatePayTotal(){
   const u=S.units.find(x=>x.id===id);if(!u)return;
   const mo=parseInt(document.getElementById('mPayMonths').value)||1;
   document.getElementById('mPayTotal').textContent=`Total: UGX ${fmt(Number(u.amount)*mo)} (${mo} month${mo>1?'s':''})`;
-  const base=new Date(u.dueDate);base.setMonth(base.getMonth()+mo);
-  document.getElementById('mPayNewDue').textContent=`New due date: ${base.toISOString().split('T')[0]}`;
+  const newDue=addMonthsStr(u.dueDate,mo);
+  document.getElementById('mPayNewDue').textContent=`New due date: ${newDue}`;
 }
 async function savePayment(){
   const id=document.getElementById('mPayId').value;
@@ -1147,8 +1159,7 @@ async function savePayment(){
   const method=document.getElementById('mPayMethod').value;
   const note=document.getElementById('mPayNote').value.trim();
   const total=Number(u.amount)*mo;
-  const d=new Date(u.dueDate);d.setMonth(d.getMonth()+mo);
-  u.dueDate=d.toISOString().split('T')[0]; u.status='paid';
+  u.dueDate=addMonthsStr(u.dueDate,mo); u.status='paid';
   const logNote=mo>1?`Advance: ${mo} months · UGX ${fmt(total)} · Paid ${payDate} via ${method}${note?' · '+note:''}`:`Paid ${payDate} via ${method}${note?' · '+note:''}`;
   u.note=(u.note?u.note+' | ':'')+logNote;
   const payReceipt=getReceiptData('mPayReceiptPreview');
