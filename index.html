@@ -889,11 +889,15 @@ function replayUnitState(u,refDate){
 // Stats for the Rentals dashboard cards, scoped to a given month (ym = 'YYYY-MM').
 // Uses live/today state for the current or a future month, and replays history
 // for a past month so the cards show what was actually true back then.
+// "Total units" always counts every unit ever added to the system, regardless
+// of month or status — it's a running total, not a month-scoped figure.
 function computeMonthStats(ym){
   const currentYm=TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
   const isPast=ym<currentYm;
   const refDate=isPast?new Date(endOfMonthStr(ym)):TODAY;
   const eomStr=endOfMonthStr(ym);
+  // Only units that already existed by this month can meaningfully be
+  // overdue/due-soon "as of" that month — but Total itself ignores this.
   const existed=S.units.filter(u=>{ const mi=getMoveInDate(u); return !mi||mi<=eomStr; });
   let overdue=0,dueSoon=0;
   existed.forEach(u=>{
@@ -902,7 +906,7 @@ function computeMonthStats(ym){
   });
   const monthRentPays=S.income.filter(e=>e.source==='Rental'&&e.status==='received'&&e.date&&e.date.startsWith(ym));
   const paidUnitKeys=new Set(monthRentPays.map(e=>e.unitId||e.unitName+'|'+e.tenant));
-  return {total:existed.length,overdue,dueSoon,paid:paidUnitKeys.size,isPast,monthRentPays};
+  return {total:S.units.length,overdue,dueSoon,paid:paidUnitKeys.size,isPast,monthRentPays};
 }
 
 // ═══════════════════════════════════════════════
@@ -1000,9 +1004,9 @@ function renderUnits(){
     </tr>`;
   }).join(''):`<tr><td colspan="7"><div class="empty">No units yet. Click "+ Add unit" to get started.</div></td></tr>`;
   const all=S.units.map(u=>({...u,_s:calcStatus(u)}));
-  // Stat cards reflect the browsed month (historical replay for past months,
-  // live state for the current/future month) so "Total units", "Overdue" and
-  // "Paid" all describe what was actually true in that month.
+  // "Total units" is always a running count of every unit ever added.
+  // Overdue / Due-soon / Paid reflect the browsed month (historical replay
+  // for past months, live state for the current/future month).
   const ms=computeMonthStats(selMonth);
   document.getElementById('s-total').textContent=ms.total;
   document.getElementById('s-ov').textContent=ms.overdue;
@@ -1010,7 +1014,7 @@ function renderUnits(){
   document.getElementById('s-paid').textContent=ms.paid;
   document.getElementById('s-paidLabel').textContent=isCurrentMonth()?'Paid this month':'Paid in month shown';
   document.getElementById('s-monthName').textContent=monthLabel(selMonth);
-  document.getElementById('unitCountSub').textContent=(ms.isPast?ms.total+' units existed':S.units.length+' units registered')+(isCurrentMonth()?'':' — viewing '+monthLabel(selMonth));
+  document.getElementById('unitCountSub').textContent=S.units.length+' units registered'+(isCurrentMonth()?'':' — viewing '+monthLabel(selMonth));
   // Alert banner + sidebar badge always reflect LIVE state (they're action
   // prompts for right now, not part of the historical report).
   const ov=all.filter(u=>u._s==='overdue').length;
