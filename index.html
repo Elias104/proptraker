@@ -6,6 +6,7 @@
 <title>PropTracker — Property & Income Manager</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏠</text></svg>">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{
@@ -144,6 +145,8 @@ tr.r-so td{background:rgba(245,158,11,.025)}
 .report-row:last-child{border-bottom:none;font-weight:600;padding-top:10px}
 .report-row .lbl{color:var(--text2)}
 .report-row .val{font-family:var(--mono)}
+.month-switch{display:inline-flex;align-items:center;gap:4px}
+.month-switch-label{min-width:118px;text-align:center;display:inline-block;font-size:12px;color:var(--text);font-family:var(--mono);font-weight:500}
 /* Loading overlay */
 #loadingOverlay{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:998;gap:16px}
 .spinner{width:36px;height:36px;border:3px solid var(--border2);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
@@ -153,8 +156,44 @@ tr.r-so td{background:rgba(245,158,11,.025)}
 .receipt-thumb:hover{transform:scale(1.1)}
 .receipt-viewer{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:400;cursor:pointer}
 .receipt-viewer img{max-width:90vw;max-height:90vh;border-radius:var(--radius-lg);box-shadow:0 20px 60px rgba(0,0,0,.5)}
-@media print{.sidebar,.topbar-actions,.notif-panel,.filters,.act,.btn-xs,.btn,.alert-banner,.notif-overlay,#loadingOverlay{display:none!important}.shell{display:block}.main{overflow:visible}body{background:#fff;color:#000}#printHeader{display:block!important}}
-#printHeader{display:none;text-align:center;margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:12px}
+/* ── Print / PDF export ──────────────────────────────────────────────
+   #printRoot is the ONLY thing that appears when printing or exporting a
+   PDF. Everything else on the page is hidden via visibility, which is
+   bulletproof against any UI element (old or new) leaking into output —
+   fixes the old approach of hiding classes one by one. */
+#printRoot{
+  display:none;background:#fff;color:#111;width:794px;padding:24px;
+  font-family:'DM Sans',Arial,sans-serif;
+  --bg:#fff;--surface:#fff;--surface2:#f5f5f7;--surface3:#eee;--surface4:#e5e5e5;
+  --border:#ddd;--border2:#ccc;--text:#111;--text2:#444;--text3:#777;
+  --green:#1e8449;--green-bg:#e8f8ee;--green-border:#bfe8cf;
+  --amber:#b8720a;--amber-bg:#fff4e0;--amber-border:#f3d9a4;
+  --red:#c0392b;--red-bg:#fdecea;--red-border:#f3c2bc;
+  --blue:#1d4ed8;--blue-bg:#eaf0fe;--blue-border:#c7d7fb;
+  --purple:#7c3aed;--purple-bg:#f2eafe;--purple-border:#ddc9fa;
+}
+#printRoot table,#printRoot th,#printRoot td{border-color:#ccc!important}
+#printRoot .table-wrap{border-radius:0;border:none}
+#printRoot .act{display:none!important}
+@media print{
+  body *{visibility:hidden}
+  #printRoot,#printRoot *{visibility:visible}
+  #printRoot{display:block!important;position:absolute;left:0;top:0;width:100%;padding:0}
+  @page{margin:14mm 12mm}
+}
+#printRoot .pdf-header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #111;padding-bottom:14px;margin-bottom:18px}
+#printRoot .pdf-brand{display:flex;align-items:center;gap:10px}
+#printRoot .pdf-logo{font-size:26px;line-height:1}
+#printRoot .pdf-brand-name{font-size:17px;font-weight:700;color:#111}
+#printRoot .pdf-brand-sub{font-size:10px;color:#666;font-family:var(--mono)}
+#printRoot .pdf-meta{text-align:right}
+#printRoot .pdf-title{font-size:15px;font-weight:700;color:#111}
+#printRoot .pdf-subtitle{font-size:11px;color:#444;margin-top:2px}
+#printRoot .pdf-generated{font-size:9px;color:#888;margin-top:5px;font-family:var(--mono)}
+#printRoot .pdf-section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin:20px 0 8px;color:#111;border-bottom:1px solid #ddd;padding-bottom:5px}
+#printRoot .pdf-footer{margin-top:22px;padding-top:10px;border-top:1px solid #ccc;font-size:9px;color:#888;display:flex;justify-content:space-between;font-family:var(--mono)}
+#printRoot table{font-size:11px}
+#printRoot th{font-size:9px}
 @media(max-width:768px){.shell{display:block}.sidebar{width:100%;height:auto;border-right:none;border-bottom:1px solid var(--border)}.stats-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.report-grid{grid-template-columns:1fr}.topbar,.section{padding:16px}.stats-grid{padding:14px 16px}}
 </style>
 </head>
@@ -256,7 +295,6 @@ tr.r-so td{background:rgba(245,158,11,.025)}
   </aside>
 
   <main class="main">
-    <div id="printHeader"><h2 style="font-size:18px">Property & Income Report</h2><p id="printDate" style="font-size:12px;color:#555"></p></div>
 
     <!-- RENTALS -->
     <div id="view-rentals">
@@ -264,6 +302,12 @@ tr.r-so td{background:rgba(245,158,11,.025)}
       <div class="topbar">
         <div><div class="page-title">Rental units</div><div class="page-sub" id="unitCountSub">Loading…</div></div>
         <div class="topbar-actions">
+          <div class="month-switch">
+            <button class="btn-xs" onclick="shiftMonth(-1)" title="Previous month">‹</button>
+            <span class="month-switch-label">—</span>
+            <button class="btn-xs" onclick="shiftMonth(1)" title="Next month">›</button>
+            <button class="btn-xs month-switch-today" onclick="goToCurrentMonth()" style="display:none">Today</button>
+          </div>
           <button class="bell-btn" onclick="openNotif()">
             🔔 Alerts
             <span id="bellCountBadge" style="display:none;background:var(--red);color:#fff;border-radius:20px;font-size:10px;font-family:var(--mono);padding:1px 6px;font-weight:700;margin-left:2px"></span>
@@ -278,7 +322,7 @@ tr.r-so td{background:rgba(245,158,11,.025)}
         <div class="stat-card"><div class="stat-label">Total units</div><div class="stat-val c-blue" id="s-total">—</div><div class="stat-sub">Registered</div></div>
         <div class="stat-card"><div class="stat-label">Overdue</div><div class="stat-val c-red" id="s-ov">—</div><div class="stat-sub">Past due date</div></div>
         <div class="stat-card"><div class="stat-label">Due within 3 days</div><div class="stat-val c-amber" id="s-soon">—</div><div class="stat-sub">Needs attention</div></div>
-        <div class="stat-card"><div class="stat-label">Paid this month</div><div class="stat-val c-green" id="s-paid">—</div><div class="stat-sub" id="s-monthName">—</div></div>
+        <div class="stat-card"><div class="stat-label" id="s-paidLabel">Paid this month</div><div class="stat-val c-green" id="s-paid">—</div><div class="stat-sub" id="s-monthName">—</div></div>
       </div>
       <div class="section">
         <div class="section-head">
@@ -286,10 +330,15 @@ tr.r-so td{background:rgba(245,158,11,.025)}
           <div class="filters">
             <select id="fRStatus" onchange="renderUnits()"><option value="">All statuses</option><option value="overdue">Overdue</option><option value="due-soon">Due soon</option><option value="extended">Extended</option><option value="paid">Paid</option></select>
             <input type="text" id="fRSearch" placeholder="Search tenant / unit…" oninput="renderUnits()" style="width:160px"/>
-            <button class="btn" onclick="window.print()">🖨 Print</button>
-          </div>
-        </div>
+            <button class="btn" onclick="printView('rentals')">🖨 Print</button>
+            <button class="btn primary" onclick="downloadPdf('rentals')">📄 Download PDF</button>
         <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Tenant</th><th>Rent (UGX)</th><th>Due date</th><th>Status</th><th class="col-note">Note</th><th>Receipt</th><th class="col-actions">Actions</th></tr></thead><tbody id="rentalsBody"></tbody></table></div>
+      </div>
+      <div class="section" style="padding-top:0">
+        <div class="section-head">
+          <div class="section-title">Rent activity — <span class="month-switch-label" style="min-width:0">—</span></div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Unit</th><th>Tenant</th><th>Amount (UGX)</th><th>Method</th><th class="col-note">Note</th></tr></thead><tbody id="rentActivityBody"></tbody></table></div>
       </div>
     </div>
 
@@ -297,11 +346,21 @@ tr.r-so td{background:rgba(245,158,11,.025)}
     <div id="view-income" style="display:none">
       <div class="topbar">
         <div><div class="page-title">Other income</div><div class="page-sub">Non-rental revenue streams</div></div>
-        <div class="topbar-actions"><button class="btn primary" onclick="openAddIncome()">+ Add entry</button></div>
+        <div class="topbar-actions">
+          <div class="month-switch">
+            <button class="btn-xs" onclick="shiftMonth(-1)" title="Previous month">‹</button>
+            <span class="month-switch-label">—</span>
+            <button class="btn-xs" onclick="shiftMonth(1)" title="Next month">›</button>
+            <button class="btn-xs month-switch-today" onclick="goToCurrentMonth()" style="display:none">Today</button>
+          </div>
+          <button class="btn primary" onclick="openAddIncome()">+ Add entry</button>
+          <button class="btn" onclick="printView('income')">🖨 Print</button>
+          <button class="btn primary" onclick="downloadPdf('income')">📄 Download PDF</button>
+        </div>
       </div>
       <div class="stats-grid">
-        <div class="stat-card"><div class="stat-label">This month received</div><div class="stat-val c-green" id="i-month">—</div><div class="stat-sub">UGX</div></div>
-        <div class="stat-card"><div class="stat-label">Total entries</div><div class="stat-val c-blue" id="i-count">—</div><div class="stat-sub">All time</div></div>
+        <div class="stat-card"><div class="stat-label" id="i-monthLabel">This month received</div><div class="stat-val c-green" id="i-month">—</div><div class="stat-sub">UGX</div></div>
+        <div class="stat-card"><div class="stat-label">Entries</div><div class="stat-val c-blue" id="i-count">—</div><div class="stat-sub">In month shown</div></div>
         <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-val c-amber" id="i-pending">—</div><div class="stat-sub">Not yet received</div></div>
         <div class="stat-card"><div class="stat-label">Categories</div><div class="stat-val c-purple" id="i-srcs">—</div><div class="stat-sub">Income sources</div></div>
       </div>
@@ -311,9 +370,10 @@ tr.r-so td{background:rgba(245,158,11,.025)}
           <div class="filters">
             <select id="fISrc" onchange="renderIncome()"><option value="">All sources</option></select>
             <select id="fIStat" onchange="renderIncome()"><option value="">All</option><option value="received">Received</option><option value="pending">Pending</option></select>
+            <select id="fIMethod" onchange="renderIncome()"><option value="">All methods</option><option value="Cash">Cash</option><option value="Mobile Money">Mobile Money</option><option value="Bank Transfer">Bank Transfer</option><option value="Cheque">Cheque</option><option value="Other">Other</option></select>
           </div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Amount (UGX)</th><th>Status</th><th class="col-note">Note</th><th>Receipt</th><th class="col-actions">Actions</th></tr></thead><tbody id="incomeBody"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Amount (UGX)</th><th>Method</th><th>Status</th><th class="col-note">Note</th><th>Receipt</th><th class="col-actions">Actions</th></tr></thead><tbody id="incomeBody"></tbody></table></div>
       </div>
     </div>
 
@@ -321,7 +381,16 @@ tr.r-so td{background:rgba(245,158,11,.025)}
     <div id="view-summary" style="display:none">
       <div class="topbar">
         <div><div class="page-title">Monthly report</div><div class="page-sub">Financial summary & overview</div></div>
-        <div class="topbar-actions"><select id="repMonth" onchange="renderSummary()" style="width:auto"></select><button class="btn" onclick="window.print()">🖨 Print</button></div>
+        <div class="topbar-actions">
+          <div class="month-switch">
+            <button class="btn-xs" onclick="shiftMonth(-1)" title="Previous month">‹</button>
+            <span class="month-switch-label">—</span>
+            <button class="btn-xs" onclick="shiftMonth(1)" title="Next month">›</button>
+            <button class="btn-xs month-switch-today" onclick="goToCurrentMonth()" style="display:none">Today</button>
+          </div>
+          <button class="btn" onclick="printView('summary')">🖨 Print</button>
+          <button class="btn primary" onclick="downloadPdf('summary')">📄 Download PDF</button>
+        </div>
       </div>
       <div id="summaryContent" style="padding:0 28px 28px"></div>
     </div>
@@ -413,7 +482,8 @@ tr.r-so td{background:rgba(245,158,11,.025)}
         <div class="c-green" id="mPayTotal" style="font-weight:600;font-family:var(--mono);font-size:14px">Total: —</div>
         <div style="color:var(--text2);margin-top:3px;font-size:12px" id="mPayNewDue">New due date: —</div>
       </div>
-      <div class="form-row"><label class="form-label">Note (optional)</label><input class="form-input" type="text" id="mPayNote" placeholder="e.g. Mobile money, bank transfer…"/></div>
+      <div class="form-row"><label class="form-label">Payment method *</label><select class="form-input" id="mPayMethod"><option value="Cash">Cash</option><option value="Mobile Money">Mobile Money</option><option value="Bank Transfer">Bank Transfer</option><option value="Cheque">Cheque</option><option value="Other">Other</option></select></div>
+      <div class="form-row"><label class="form-label">Note (optional)</label><input class="form-input" type="text" id="mPayNote" placeholder="Any extra detail…"/></div>
       <div class="form-row"><label class="form-label">Payment receipt (optional)</label>
         <input type="file" id="mPayReceipt" accept="image/*" style="display:none" onchange="previewReceipt('mPayReceiptPreview',this)"/>
         <div style="display:flex;align-items:center;gap:10px">
@@ -451,6 +521,7 @@ tr.r-so td{background:rgba(245,158,11,.025)}
         <div class="form-row"><label class="form-label">Source *</label><select class="form-input" id="mIncSrc"></select></div>
         <div class="form-row"><label class="form-label">Amount (UGX) *</label><input class="form-input" type="number" id="mIncAmt" placeholder="0" min="0"/></div>
         <div class="form-row"><label class="form-label">Status</label><select class="form-input" id="mIncStat"><option value="received">Received</option><option value="pending">Pending</option></select></div>
+        <div class="form-row"><label class="form-label">Payment method *</label><select class="form-input" id="mIncMethod"><option value="Cash">Cash</option><option value="Mobile Money">Mobile Money</option><option value="Bank Transfer">Bank Transfer</option><option value="Cheque">Cheque</option><option value="Other">Other</option></select></div>
       </div>
       <div class="form-row"><label class="form-label">Description</label><input class="form-input" type="text" id="mIncDesc" placeholder="Brief description…"/></div>
       <div class="form-row"><label class="form-label">Note</label><textarea id="mIncNote" rows="2"></textarea></div>
@@ -488,6 +559,9 @@ tr.r-so td{background:rgba(245,158,11,.025)}
 
 <div id="toast" style="position:fixed;bottom:24px;right:24px;background:var(--surface3);border:1px solid var(--border2);color:var(--text);padding:10px 18px;border-radius:var(--radius-lg);font-size:13px;z-index:500;display:none"></div>
 
+<!-- PRINT / PDF ROOT — the only thing visible when printing or exporting -->
+<div id="printRoot"></div>
+
 <script>
 // ═══════════════════════════════════════════════
 // SUPABASE CONFIG
@@ -504,6 +578,31 @@ const MONTHS_LONG=['January','February','March','April','May','June','July','Aug
 let S = { units:[], income:[], sources:['Rental','Consultancy','Parking fees','Dividends','Business profit','Other'], pin:'1234' };
 let dbOnline = false;
 let pendingSync = [];
+
+// Shared month switcher — one selected month drives Rentals activity,
+// Income entries, and the Monthly report all at once.
+let selMonth = TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+function monthLabel(ym){ const[y,m]=ym.split('-').map(Number); return MONTHS_LONG[m-1]+' '+y; }
+function isCurrentMonth(){ return selMonth===(TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0')); }
+function updateMonthLabels(){
+  document.querySelectorAll('.month-switch-label').forEach(el=>el.textContent=monthLabel(selMonth));
+  document.querySelectorAll('.month-switch-today').forEach(el=>el.style.display=isCurrentMonth()?'none':'inline-flex');
+}
+function shiftMonth(delta){
+  const[y,m]=selMonth.split('-').map(Number);
+  const d=new Date(y,m-1+delta,1);
+  selMonth=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  updateMonthLabels(); refreshMonthScoped();
+}
+function goToCurrentMonth(){
+  selMonth=TODAY.getFullYear()+'-'+String(TODAY.getMonth()+1).padStart(2,'0');
+  updateMonthLabels(); refreshMonthScoped();
+}
+function refreshMonthScoped(){
+  if(document.getElementById('rentalsBody')) renderUnits();
+  if(document.getElementById('incomeBody')) renderIncome();
+  if(document.getElementById('summaryContent')) renderSummary();
+}
 
 // ═══════════════════════════════════════════════
 // LOCAL STORAGE FALLBACK
@@ -712,11 +811,15 @@ function esc(s){if(!s)return'';const d=document.createElement('div');d.textConte
 function todayStr(){return TODAY.toISOString().split('T')[0]}
 function toast(msg,dur=2500){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',dur)}
 function calcStatus(u){
-  if(u.status==='paid') return 'paid';
-  if(u.status==='extended') return 'extended';
+  // Status follows the rent-paid expiry date. "Paid"/"Extended" only hold while
+  // that due date is still comfortably in the future — once it's within the
+  // due-soon window or has passed, the unit automatically flips to due-soon /
+  // overdue for the new month, regardless of the stored status.
   const d=daysFrom(u.dueDate);
   if(d<0) return 'overdue';
   if(d<=3) return 'due-soon';
+  if(u.status==='paid') return 'paid';
+  if(u.status==='extended') return 'extended';
   return 'due-soon';
 }
 function badge(status,days){
@@ -733,9 +836,10 @@ function showView(v){
     const nb=document.getElementById('nav-'+x); if(nb) nb.classList.toggle('active',x===v);
   });
   if(v==='income'){renderIncome();refillSourceDrops()}
-  if(v==='summary'){buildRepMonths();renderSummary()}
+  if(v==='summary'){renderSummary()}
   if(v==='sources') renderSources();
   if(v==='rentals') renderUnits();
+  updateMonthLabels();
 }
 
 // ═══════════════════════════════════════════════
@@ -818,12 +922,15 @@ function renderUnits(){
     </tr>`;
   }).join(''):`<tr><td colspan="7"><div class="empty">No units yet. Click "+ Add unit" to get started.</div></td></tr>`;
   const all=S.units.map(u=>({...u,_s:calcStatus(u)}));
-  const mo=TODAY.getMonth(),yr=TODAY.getFullYear();
   document.getElementById('s-total').textContent=S.units.length;
   document.getElementById('s-ov').textContent=all.filter(u=>u._s==='overdue').length;
   document.getElementById('s-soon').textContent=all.filter(u=>u._s==='due-soon').length;
-  document.getElementById('s-paid').textContent=all.filter(u=>u._s==='paid').length;
-  document.getElementById('s-monthName').textContent=MONTHS_LONG[mo]+' '+yr;
+  // "Paid" card is scoped to the selected month via the rent-activity log, not live unit status
+  const monthRentPays=S.income.filter(e=>e.source==='Rental'&&e.status==='received'&&e.date&&e.date.startsWith(selMonth));
+  const paidUnitKeys=new Set(monthRentPays.map(e=>e.unitId||e.unitName+'|'+e.tenant));
+  document.getElementById('s-paid').textContent=paidUnitKeys.size;
+  document.getElementById('s-paidLabel').textContent=isCurrentMonth()?'Paid this month':'Paid in month shown';
+  document.getElementById('s-monthName').textContent=monthLabel(selMonth);
   document.getElementById('unitCountSub').textContent=S.units.length+' units registered';
   const ov=all.filter(u=>u._s==='overdue').length;
   const bd=document.getElementById('overdueCount'); bd.textContent=ov; bd.style.display=ov?'':'none';
@@ -833,6 +940,21 @@ function renderUnits(){
   if(ov>0){ab.style.display='flex';ab.className='alert-banner red';ab.innerHTML=`<span>🚨</span><strong>${ov} unit${ov>1?'s are':' is'} overdue.</strong>&nbsp;Follow up immediately.`}
   else if(soon>0){ab.style.display='flex';ab.className='alert-banner amber';ab.innerHTML=`<span>⚠️</span><strong>${soon} unit${soon>1?'s are':' is'} due within 3 days.</strong>&nbsp;Collect soon.`}
   else ab.style.display='none';
+  updateMonthLabels();
+  renderRentActivity(monthRentPays);
+}
+function renderRentActivity(monthRentPays){
+  const rows=(monthRentPays||S.income.filter(e=>e.source==='Rental'&&e.date&&e.date.startsWith(selMonth))).slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const tbody=document.getElementById('rentActivityBody');
+  if(!tbody) return;
+  tbody.innerHTML=rows.length?rows.map(r=>`<tr>
+    <td class="mono">${r.date}</td>
+    <td>${esc(r.unitName||(r.description||'').split(' — ')[0]||'—')}</td>
+    <td>${esc(r.tenant||(r.description||'').split(' — ')[1]||'—')}</td>
+    <td class="mono">${fmt(r.amount)}</td>
+    <td>${r.method?esc(r.method):'—'}</td>
+    <td><span class="note-cell">${esc(r.note||'—')}</span></td>
+  </tr>`).join(''):`<tr><td colspan="6"><div class="empty">No rent payments recorded for ${monthLabel(selMonth)}.</div></td></tr>`;
 }
 
 function markPaid(id){
@@ -841,6 +963,7 @@ function markPaid(id){
   document.getElementById('mPayMonths').value='1';
   document.getElementById('mPayDate').value=todayStr();
   document.getElementById('mPayNote').value='';
+  document.getElementById('mPayMethod').value='Cash';
   document.getElementById('mPayInfo').textContent=`${u.unitName} — ${u.tenant} · UGX ${fmt(u.amount)}/month`;
   updatePayTotal();
   document.getElementById('payModal').style.display='flex';
@@ -859,14 +982,15 @@ async function savePayment(){
   const mo=parseInt(document.getElementById('mPayMonths').value)||1;
   if(mo<1||mo>24){alert('Enter between 1 and 24 months.');return}
   const payDate=document.getElementById('mPayDate').value||todayStr();
+  const method=document.getElementById('mPayMethod').value;
   const note=document.getElementById('mPayNote').value.trim();
   const total=Number(u.amount)*mo;
   const d=new Date(u.dueDate);d.setMonth(d.getMonth()+mo);
   u.dueDate=d.toISOString().split('T')[0]; u.status='paid';
-  const logNote=mo>1?`Advance: ${mo} months · UGX ${fmt(total)} · Paid ${payDate}${note?' · '+note:''}`:`Paid ${payDate}${note?' · '+note:''}`;
+  const logNote=mo>1?`Advance: ${mo} months · UGX ${fmt(total)} · Paid ${payDate} via ${method}${note?' · '+note:''}`:`Paid ${payDate} via ${method}${note?' · '+note:''}`;
   u.note=(u.note?u.note+' | ':'')+logNote;
   const payReceipt=getReceiptData('mPayReceiptPreview');
-  const incEntry={id:uid(),date:payDate,source:'Rental',description:`${u.unitName} — ${u.tenant}${mo>1?' ('+mo+' months)':''}`,amount:total,status:'received',note:logNote,receipt:payReceipt||undefined};
+  const incEntry={id:uid(),date:payDate,source:'Rental',unitId:u.id,unitName:u.unitName,tenant:u.tenant,description:`${u.unitName} — ${u.tenant}${mo>1?' ('+mo+' months)':''}`,amount:total,status:'received',method,note:logNote,receipt:payReceipt||undefined};
   S.income.push(incEntry);
   saveLocal();
   setSyncStatus('saving','⬤ Saving…');
@@ -960,10 +1084,11 @@ function fillIncSrcSelect(){
   document.getElementById('mIncSrc').innerHTML=S.sources.map(s=>`<option>${esc(s)}</option>`).join('');
 }
 function renderIncome(){
-  const fs=document.getElementById('fISrc').value; const fst=document.getElementById('fIStat').value;
-  let rows=[...S.income];
+  const fs=document.getElementById('fISrc').value; const fst=document.getElementById('fIStat').value; const fm=document.getElementById('fIMethod').value;
+  let rows=S.income.filter(r=>r.date&&r.date.startsWith(selMonth));
   if(fs) rows=rows.filter(r=>r.source===fs);
   if(fst) rows=rows.filter(r=>r.status===fst);
+  if(fm) rows=rows.filter(r=>(r.method||'—')===fm);
   rows.sort((a,b)=>b.date.localeCompare(a.date));
   const tbody=document.getElementById('incomeBody');
   tbody.innerHTML=rows.length?rows.map(r=>`<tr>
@@ -971,23 +1096,26 @@ function renderIncome(){
     <td><span class="badge other">${esc(r.source)}</span></td>
     <td>${esc(r.description||'—')}</td>
     <td class="mono">${fmt(r.amount)}</td>
+    <td>${r.method?esc(r.method):'—'}</td>
     <td>${badge(r.status)}</td>
     <td><span class="note-cell">${esc(r.note||'—')}</span></td>
     <td>${r.receipt?receiptThumbHtml(r.receipt):'—'}</td>
     <td><div class="act"><button class="btn-xs" onclick="openEditIncome('${r.id}')">Edit</button><button class="btn-xs r" onclick="confirmDel('income','${r.id}')">✕</button></div></td>
-  </tr>`).join(''):`<tr><td colspan="7"><div class="empty">No income entries yet.</div></td></tr>`;
-  const mo=TODAY.getMonth(),yr=TODAY.getFullYear();
-  const thisM=S.income.filter(e=>{const d=new Date(e.date);return d.getMonth()===mo&&d.getFullYear()===yr&&e.status==='received'});
-  document.getElementById('i-month').textContent=fmt(thisM.reduce((s,e)=>s+Number(e.amount),0));
-  document.getElementById('i-count').textContent=S.income.length;
-  document.getElementById('i-pending').textContent=S.income.filter(e=>e.status==='pending').length;
+  </tr>`).join(''):`<tr><td colspan="8"><div class="empty">${S.income.length?`No income entries match ${monthLabel(selMonth)}${fs||fst||fm?' with these filters':''}.`:'No income entries yet.'}</div></td></tr>`;
+  const monthRows=S.income.filter(e=>e.date&&e.date.startsWith(selMonth));
+  document.getElementById('i-monthLabel').textContent=isCurrentMonth()?'This month received':'Received in month shown';
+  document.getElementById('i-month').textContent=fmt(monthRows.filter(e=>e.status==='received').reduce((s,e)=>s+Number(e.amount),0));
+  document.getElementById('i-count').textContent=monthRows.length;
+  document.getElementById('i-pending').textContent=monthRows.filter(e=>e.status==='pending').length;
   document.getElementById('i-srcs').textContent=S.sources.length;
+  updateMonthLabels();
 }
 function openAddIncome(){
   document.getElementById('incomeModalTitle').textContent='Add income entry';
   document.getElementById('mIncId').value=''; document.getElementById('mIncDate').value=todayStr();
   document.getElementById('mIncAmt').value=''; document.getElementById('mIncDesc').value='';
   document.getElementById('mIncNote').value=''; document.getElementById('mIncStat').value='received';
+  document.getElementById('mIncMethod').value='Cash';
   clearReceiptPreview('mIncReceiptPreview');
   document.getElementById('mIncReceipt').value='';
   fillIncSrcSelect(); document.getElementById('incomeModal').style.display='flex';
@@ -998,6 +1126,7 @@ function openEditIncome(id){
   document.getElementById('mIncId').value=id; document.getElementById('mIncDate').value=e.date;
   document.getElementById('mIncAmt').value=e.amount; document.getElementById('mIncDesc').value=e.description||'';
   document.getElementById('mIncNote').value=e.note||''; document.getElementById('mIncStat').value=e.status;
+  document.getElementById('mIncMethod').value=e.method||'Cash';
   fillIncSrcSelect(); document.getElementById('mIncSrc').value=e.source;
   document.getElementById('mIncReceipt').value='';
   const preview=document.getElementById('mIncReceiptPreview');
@@ -1014,7 +1143,7 @@ async function saveIncome(){
   const newIncReceipt=getReceiptData('mIncReceiptPreview');
   const existingIncReceipt=id?(S.income.find(x=>x.id===id)||{}).receipt:undefined;
   const incReceipt=newIncReceipt||existingIncReceipt||undefined;
-  const obj={id:id||uid(),date,source:src,description:document.getElementById('mIncDesc').value.trim(),amount:Number(amt),status:document.getElementById('mIncStat').value,note:document.getElementById('mIncNote').value.trim(),receipt:incReceipt};
+  const obj={id:id||uid(),date,source:src,description:document.getElementById('mIncDesc').value.trim(),amount:Number(amt),status:document.getElementById('mIncStat').value,method:document.getElementById('mIncMethod').value,note:document.getElementById('mIncNote').value.trim(),receipt:incReceipt};
   if(id){const i=S.income.findIndex(x=>x.id===id);S.income[i]=obj}else{S.income.push(obj)}
   saveLocal(); setSyncStatus('saving','⬤ Saving…');
   try{ await upsertIncome(obj); setSyncStatus('ok','⬤ Cloud synced'); }
@@ -1054,19 +1183,8 @@ function confirmDelSrc(i){
 // ═══════════════════════════════════════════════
 // SUMMARY
 // ═══════════════════════════════════════════════
-function buildRepMonths(){
-  const sel=document.getElementById('repMonth'); const existing=sel.value;
-  const set=new Set();
-  const now=new Date();
-  for(let i=0;i<12;i++){const d=new Date(now.getFullYear(),now.getMonth()-i,1);set.add(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'))}
-  S.units.forEach(u=>{const p=u.dueDate&&u.dueDate.slice(0,7);if(p)set.add(p)});
-  S.income.forEach(e=>{const p=e.date&&e.date.slice(0,7);if(p)set.add(p)});
-  const sorted=[...set].sort((a,b)=>b.localeCompare(a));
-  sel.innerHTML=sorted.map(m=>{const[y,mo]=m.split('-');return`<option value="${m}">${MONTHS_LONG[+mo-1]} ${y}</option>`}).join('');
-  if(existing&&sorted.includes(existing)) sel.value=existing;
-}
 function renderSummary(){
-  const mo=document.getElementById('repMonth').value; if(!mo) return;
+  const mo=selMonth;
   const[yr,m]=mo.split('-').map(Number); const label=`${MONTHS_LONG[m-1]} ${yr}`;
   const allU=S.units.map(u=>({...u,_s:calcStatus(u)}));
   const totalRent=S.units.reduce((s,u)=>s+Number(u.amount),0);
@@ -1100,7 +1218,6 @@ function renderSummary(){
     <div class="table-wrap"><table><thead><tr><th>Unit</th><th>Tenant</th><th>Phone</th><th>Rent (UGX)</th><th>Due date</th><th>Note</th></tr></thead>
     <tbody>${ovU.map(u=>`<tr><td>${esc(u.unitName)}</td><td>${esc(u.tenant)}</td><td class="mono">${u.phone||'—'}</td><td class="mono">${fmt(u.amount)}</td><td class="mono">${u.dueDate}</td><td><span class="note-cell">${esc(u.note||'—')}</span></td></tr>`).join('')}</tbody></table></div>`:''}
   </div>`;
-  document.getElementById('printDate').textContent='Report for '+label+' · Printed '+new Date().toLocaleDateString('en-UG',{day:'numeric',month:'long',year:'numeric'});
 }
 
 // ═══════════════════════════════════════════════
@@ -1294,6 +1411,115 @@ function viewReceipt(src){
 function receiptThumbHtml(src){
   if(!src) return '';
   return `<img src="${src}" class="receipt-thumb" onclick="viewReceipt('${src}')" title="Click to view receipt"/>`;
+}
+
+// ═══════════════════════════════════════════════
+// PRINT / PDF EXPORT
+// ═══════════════════════════════════════════════
+function pdfHeaderHtml(title,subtitle){
+  return `<div class="pdf-header">
+    <div class="pdf-brand"><span class="pdf-logo">🏠</span><div><div class="pdf-brand-name">PropTracker</div><div class="pdf-brand-sub">Property &amp; Income Manager</div></div></div>
+    <div class="pdf-meta"><div class="pdf-title">${esc(title)}</div><div class="pdf-subtitle">${esc(subtitle)}</div><div class="pdf-generated">Generated ${new Date().toLocaleString('en-UG',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</div></div>
+  </div>`;
+}
+function pdfFooterHtml(){
+  return `<div class="pdf-footer"><span>PropTracker — confidential financial record</span><span>${todayStr()}</span></div>`;
+}
+function pdfStat(label,val,sub){
+  return `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-val">${esc(String(val))}</div><div class="stat-sub">${esc(sub||'')}</div></div>`;
+}
+function buildPrintRentals(){
+  const fs=document.getElementById('fRStatus').value;
+  const fq=document.getElementById('fRSearch').value.toLowerCase();
+  let rows=S.units.map(u=>({...u,_s:calcStatus(u)}));
+  if(fs) rows=rows.filter(r=>r._s===fs);
+  if(fq) rows=rows.filter(r=>r.unitName.toLowerCase().includes(fq)||r.tenant.toLowerCase().includes(fq));
+  const order={overdue:0,'due-soon':1,extended:2,paid:3};
+  rows.sort((a,b)=>(order[a._s]||9)-(order[b._s]||9));
+  const all=S.units.map(u=>({...u,_s:calcStatus(u)}));
+  const ov=all.filter(u=>u._s==='overdue').length, soon=all.filter(u=>u._s==='due-soon').length;
+  const monthRentPays=S.income.filter(e=>e.source==='Rental'&&e.status==='received'&&e.date&&e.date.startsWith(selMonth));
+  const paidCount=new Set(monthRentPays.map(e=>e.unitId||e.unitName+'|'+e.tenant)).size;
+  const bits=[fs&&('status = '+fs),fq&&('search = "'+fq+'"')].filter(Boolean);
+  const filterNote=bits.length?('Filtered — '+bits.join(', ')):'All units, all statuses';
+  const unitsTable=`<table><thead><tr><th>Unit</th><th>Tenant</th><th>Phone</th><th>Rent (UGX)</th><th>Due date</th><th>Status</th><th>Note</th></tr></thead><tbody>
+    ${rows.length?rows.map(r=>{const d=daysFrom(r.dueDate);return `<tr><td>${esc(r.unitName)}${r.unitType?' <span style="color:#888">('+esc(r.unitType)+')</span>':''}</td><td>${esc(r.tenant)}</td><td>${esc(r.phone||'—')}</td><td>${fmt(r.amount)}</td><td>${r.dueDate}</td><td>${badge(r._s,d>=0?d:null)}</td><td>${esc(r.note||'—')}</td></tr>`}).join(''):'<tr><td colspan="7" style="text-align:center;color:#888">No units match the current filter.</td></tr>'}
+  </tbody></table>`;
+  const actRows=monthRentPays.slice().sort((a,b)=>b.date.localeCompare(a.date));
+  const actTable=`<table><thead><tr><th>Date</th><th>Unit</th><th>Tenant</th><th>Amount (UGX)</th><th>Method</th><th>Note</th></tr></thead><tbody>
+    ${actRows.length?actRows.map(r=>`<tr><td>${r.date}</td><td>${esc(r.unitName||'—')}</td><td>${esc(r.tenant||'—')}</td><td>${fmt(r.amount)}</td><td>${esc(r.method||'—')}</td><td>${esc(r.note||'—')}</td></tr>`).join(''):'<tr><td colspan="6" style="text-align:center;color:#888">No rent payments recorded this month.</td></tr>'}
+  </tbody></table>`;
+  return `${pdfHeaderHtml('Rental Units Report',`${filterNote} · As of ${todayStr()}`)}
+    <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)">
+      ${pdfStat('Total units',S.units.length,'Registered')}
+      ${pdfStat('Overdue',ov,'Past due date')}
+      ${pdfStat('Due within 3 days',soon,'Needs attention')}
+      ${pdfStat('Paid',paidCount,monthLabel(selMonth))}
+    </div>
+    <div class="pdf-section-title">All units</div>
+    <div class="table-wrap">${unitsTable}</div>
+    <div class="pdf-section-title">Rent activity — ${monthLabel(selMonth)}</div>
+    <div class="table-wrap">${actTable}</div>
+    ${pdfFooterHtml()}`;
+}
+function buildPrintIncome(){
+  const fs=document.getElementById('fISrc').value, fst=document.getElementById('fIStat').value, fm=document.getElementById('fIMethod').value;
+  let rows=S.income.filter(r=>r.date&&r.date.startsWith(selMonth));
+  if(fs) rows=rows.filter(r=>r.source===fs);
+  if(fst) rows=rows.filter(r=>r.status===fst);
+  if(fm) rows=rows.filter(r=>(r.method||'—')===fm);
+  rows.sort((a,b)=>b.date.localeCompare(a.date));
+  const received=rows.filter(e=>e.status==='received').reduce((s,e)=>s+Number(e.amount),0);
+  const pending=rows.filter(e=>e.status==='pending').length;
+  const bits=[fs&&('source = '+fs),fst&&('status = '+fst),fm&&('method = '+fm)].filter(Boolean);
+  const filterNote=bits.length?('Filtered — '+bits.join(', ')):'All sources, all methods';
+  const table=`<table><thead><tr><th>Date</th><th>Source</th><th>Description</th><th>Amount (UGX)</th><th>Method</th><th>Status</th><th>Note</th></tr></thead><tbody>
+    ${rows.length?rows.map(r=>`<tr><td>${r.date}</td><td>${esc(r.source)}</td><td>${esc(r.description||'—')}</td><td>${fmt(r.amount)}</td><td>${esc(r.method||'—')}</td><td>${badge(r.status)}</td><td>${esc(r.note||'—')}</td></tr>`).join(''):'<tr><td colspan="7" style="text-align:center;color:#888">No entries match the current filter.</td></tr>'}
+  </tbody></table>`;
+  return `${pdfHeaderHtml('Income Report',`${monthLabel(selMonth)} · ${filterNote}`)}
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+      ${pdfStat('Received','UGX '+fmt(received),monthLabel(selMonth))}
+      ${pdfStat('Entries',rows.length,'In this view')}
+      ${pdfStat('Pending',pending,'Not yet received')}
+    </div>
+    <div class="pdf-section-title">Income entries</div>
+    <div class="table-wrap">${table}</div>
+    ${pdfFooterHtml()}`;
+}
+function buildPrintSummary(){
+  const content=document.getElementById('summaryContent').innerHTML;
+  return `${pdfHeaderHtml('Monthly Report',monthLabel(selMonth))}
+    ${content}
+    ${pdfFooterHtml()}`;
+}
+function populatePrintRoot(view){
+  const root=document.getElementById('printRoot');
+  if(view==='rentals') root.innerHTML=buildPrintRentals();
+  else if(view==='income') root.innerHTML=buildPrintIncome();
+  else if(view==='summary') root.innerHTML=buildPrintSummary();
+  return root;
+}
+function printView(view){
+  populatePrintRoot(view);
+  setTimeout(()=>window.print(),50); // let layout settle before the print dialog opens
+}
+function downloadPdf(view){
+  const root=populatePrintRoot(view);
+  const fileMap={rentals:'Rentals',income:'Income',summary:'Monthly-Report'};
+  const filename=`PropTracker-${fileMap[view]||'Report'}-${selMonth}.pdf`;
+  // Reveal off-screen (not display:none) so html2canvas can measure & render it
+  root.style.display='block'; root.style.position='fixed'; root.style.left='-10000px'; root.style.top='0';
+  const opt={
+    margin:[10,10,10,10],
+    filename,
+    image:{type:'jpeg',quality:0.98},
+    html2canvas:{scale:2,useCORS:true,backgroundColor:'#ffffff'},
+    jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},
+    pagebreak:{mode:['avoid-all','css','legacy']}
+  };
+  const reset=()=>{ root.style.display='none'; root.style.position=''; root.style.left=''; root.style.top=''; };
+  if(typeof html2pdf==='undefined'){ alert('PDF library failed to load — check your internet connection and try again.'); reset(); return; }
+  html2pdf().set(opt).from(root).save().then(reset).catch(err=>{ console.error(err); alert('PDF export failed: '+err.message); reset(); });
 }
 
 // ═══════════════════════════════════════════════
